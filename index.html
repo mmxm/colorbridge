@@ -39,6 +39,9 @@
   <!-- JSZip CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+  <!-- heic2any CDN (HEIC/HEIF browser support for Firefox/Chrome) -->
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
   <!-- Custom styles for iOS native scroll and glassmorphism -->
   <style>
     /* Safe Area Inset for iOS notched screens */
@@ -569,25 +572,68 @@
     });
 
     // --- Photo Selection & Queue Setup ---
-    imageInput.addEventListener("change", (e) => {
+    imageInput.addEventListener("change", async (e) => {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
-      files.forEach((file) => {
-        // Validate it's an image
-        if (!file.type.startsWith("image/")) {
-          alert(`Le fichier ${file.name} n'est pas une image prise en charge.`);
-          return;
+      // Disable upload input during HEIC conversion to prevent double clicks
+      imageInput.disabled = true;
+
+      // Temporarily display converting message if HEIC images are detected
+      const hasHeic = files.some(file => 
+        file.name.toLowerCase().endsWith(".heic") || 
+        file.name.toLowerCase().endsWith(".heif") || 
+        file.type === "image/heic" || 
+        file.type === "image/heif"
+      );
+
+      if (hasHeic) {
+        queueCounterBadge.classList.remove("hidden");
+        queueCounterBadge.innerText = "Décryptage HEIC...";
+      }
+
+      for (let file of files) {
+        let isHeic = file.name.toLowerCase().endsWith(".heic") || 
+                     file.name.toLowerCase().endsWith(".heif") || 
+                     file.type === "image/heic" || 
+                     file.type === "image/heif";
+        
+        let imageFile = file;
+        let previewUrl = null;
+
+        if (isHeic) {
+          try {
+            // Convert HEIC blob to JPEG blob in browser
+            const jpegBlob = await heic2any({
+              blob: file,
+              toType: "image/jpeg",
+              quality: 0.9
+            });
+
+            // Wrap in standard File object
+            const newFileName = file.name.replace(/\.(heic|heif)$/i, "") + ".jpg";
+            imageFile = new File([jpegBlob], newFileName, { type: "image/jpeg" });
+          } catch (err) {
+            console.error("HEIC conversion failed:", err);
+            alert(`Impossible de charger le fichier HEIC ${file.name} sur ce navigateur : ${err.message || err}`);
+            continue;
+          }
+        } else {
+          // Check that it's a valid image type
+          if (!file.type.startsWith("image/")) {
+            alert(`Le fichier ${file.name} n'est pas une image prise en charge.`);
+            continue;
+          }
         }
 
         const id = "img_" + Math.random().toString(36).substr(2, 9);
-        const previewUrl = URL.createObjectURL(file);
+        previewUrl = URL.createObjectURL(imageFile);
         
         imagesQueue.push({
           id,
-          file,
+          file: imageFile,
           previewUrl,
-          name: file.name,
+          name: imageFile.name,
           status: "pending", // pending, processing, completed, error
           resultBlob: null,
           resultFile: null,
@@ -595,9 +641,10 @@
           width: 0,
           height: 0
         });
-      });
+      }
 
-      // Reset image input selector
+      // Re-enable and reset image input selector
+      imageInput.disabled = false;
       imageInput.value = "";
       
       renderImageGrid();
