@@ -118,18 +118,23 @@
       <div id="iccDetailsCard" class="hidden bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl p-4 space-y-3">
         <div class="flex justify-between items-start">
           <div class="space-y-1">
-            <h3 id="iccProfileName" class="font-bold text-sm text-neutral-900 dark:text-neutral-100">SELPHY_CP1500_Paper.icc</h3>
+            <h3 id="iccProfileName" class="font-bold text-sm text-neutral-900 dark:text-neutral-100">default.icc</h3>
             <p id="iccProfileDesc" class="text-xs text-neutral-500 dark:text-neutral-400">Description du profil non lue</p>
           </div>
-          <button id="btnDeleteICC" class="text-ios-red hover:bg-ios-red/10 p-1.5 rounded-full transition-colors" title="Supprimer le profil">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
-          </button>
+          <div class="flex items-center space-x-1">
+            <button id="btnUploadNewICC" class="text-ios-blue hover:bg-ios-blue/10 p-1.5 rounded-full transition-colors" title="Charger un profil personnalisé">
+              <i data-lucide="file-up" class="w-4 h-4"></i>
+            </button>
+            <button id="btnDeleteICC" class="text-ios-red hover:bg-ios-red/10 p-1.5 rounded-full transition-colors" title="Supprimer le profil personnalisé">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-2 text-xxs text-neutral-500 dark:text-neutral-400 pt-2 border-t border-neutral-200/50 dark:border-neutral-800/50">
           <div>Espace couleur : <span id="iccColorSpace" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
           <div>Modèle : <span id="iccDeviceModel" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
           <div>Fabricant : <span id="iccDeviceMfr" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
-          <div>Persistance : <span class="text-ios-green font-semibold">IndexedDB</span></div>
+          <div>Type : <span id="iccPersistenceType" class="text-ios-green font-semibold">IndexedDB</span></div>
         </div>
       </div>
 
@@ -293,6 +298,7 @@
     let targetProfileHandle = null;
     let isProcessing = false;
     let cancelProcessingFlag = false;
+    let isDefaultProfileActive = false;
 
     // Database structure constants
     const DB_NAME = "ICCProfileDB";
@@ -314,6 +320,8 @@
     const iccDeviceModel = document.getElementById("iccDeviceModel");
     const iccDeviceMfr = document.getElementById("iccDeviceMfr");
     const btnDeleteICC = document.getElementById("btnDeleteICC");
+    const btnUploadNewICC = document.getElementById("btnUploadNewICC");
+    const iccPersistenceType = document.getElementById("iccPersistenceType");
 
     const imageInput = document.getElementById("imageInput");
     const queueCounterBadge = document.getElementById("queueCounterBadge");
@@ -419,9 +427,10 @@
         // Step 2: Retrieve saved profile from DB
         const savedProfile = await getICCProfile();
         if (savedProfile) {
-          await parseAndApplyICCProfile(savedProfile.data, savedProfile.name);
+          await parseAndApplyICCProfile(savedProfile.data, savedProfile.name, false);
         } else {
-          updateProfileUI(null);
+          // Fallback to default.icc file if it exists on server
+          await loadDefaultProfile();
         }
       } catch (err) {
         console.error("Initialization error:", err);
@@ -435,8 +444,23 @@
       }
     }
 
+    // Try to load default.icc from the web server root
+    async function loadDefaultProfile() {
+      try {
+        const response = await fetch("default.icc");
+        if (!response.ok) {
+          throw new Error("Fichier default.icc non trouvé sur le serveur.");
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        await parseAndApplyICCProfile(arrayBuffer, "default.icc", true);
+      } catch (err) {
+        console.log("No default.icc file loaded:", err.message);
+        updateProfileUI(null);
+      }
+    }
+
     // Parse ICC Profile metadata and load into LittleCMS memory
-    async function parseAndApplyICCProfile(arrayBuffer, fileName) {
+    async function parseAndApplyICCProfile(arrayBuffer, fileName, isDefault = false) {
       if (!lcms) return;
 
       try {
@@ -460,12 +484,15 @@
         const model = lcms.cmsGetProfileInfoASCII(targetProfileHandle, cmsInfoModel, "en", "US") || "SELPHY CP1500";
         const colorSpace = lcms.cmsGetColorSpaceASCII(targetProfileHandle) || "Inconnu";
 
+        isDefaultProfileActive = isDefault;
+
         updateProfileUI({
           name: fileName,
           desc,
           mfr,
           model,
-          colorSpace
+          colorSpace,
+          isDefault
         });
       } catch (err) {
         console.error("ICC Parsing error:", err);
@@ -486,6 +513,16 @@
         iccDeviceModel.innerText = profileInfo.model;
         iccDeviceMfr.innerText = profileInfo.mfr;
 
+        if (profileInfo.isDefault) {
+          iccPersistenceType.innerText = "Intégré (Par défaut)";
+          iccPersistenceType.className = "text-neutral-500 font-semibold";
+          btnDeleteICC.classList.add("hidden");
+        } else {
+          iccPersistenceType.innerText = "Personnalisé (IndexedDB)";
+          iccPersistenceType.className = "text-ios-green font-semibold";
+          btnDeleteICC.classList.remove("hidden");
+        }
+
         iccUploadBox.classList.add("hidden");
         iccDetailsCard.classList.remove("hidden");
       } else {
@@ -505,6 +542,7 @@
 
     // --- Profile File Input Event Listeners ---
     iccUploadBox.addEventListener("click", () => iccInput.click());
+    btnUploadNewICC.addEventListener("click", () => iccInput.click());
     
     iccInput.addEventListener("change", async (e) => {
       const file = e.target.files[0];
@@ -516,7 +554,7 @@
         // 1. Store in DB
         await storeICCProfile(buffer, file.name);
         // 2. Parse & apply
-        await parseAndApplyICCProfile(buffer, file.name);
+        await parseAndApplyICCProfile(buffer, file.name, false);
       };
       reader.readAsArrayBuffer(file);
       // Reset input value to allow uploading same file again
@@ -524,9 +562,9 @@
     });
 
     btnDeleteICC.addEventListener("click", async () => {
-      if (confirm("Voulez-vous vraiment décharger et supprimer ce profil ICC ?")) {
+      if (confirm("Voulez-vous supprimer ce profil personnalisé et revenir au profil par défaut ?")) {
         await clearICCProfile();
-        updateProfileUI(null);
+        await loadDefaultProfile();
       }
     });
 
