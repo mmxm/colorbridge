@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SELPHY ColorBridge - Calibration CP1500</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'media',
+      theme: {
+        extend: {
+          colors: {
+            ios: {
+              blue: '#007aff',
+              green: '#34c759',
+              orange: '#ff9500',
+              red: '#ff3b30',
+              gray: '#8e8e93',
+              systemBgLight: '#f2f2f7',
+              cardBgLight: '#ffffff',
+              systemBgDark: '#000000',
+              cardBgDark: '#1c1c1e',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- Custom styles for iOS native scroll and glassmorphism -->
+  <style>
+    /* Safe Area Inset for iOS notched screens */
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+    .safe-top {
+      padding-top: env(safe-area-inset-top, 16px);
+    }
+    
+    /* Custom scrollbar hides but scrolls smoothly */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Before/After sliding cursor effect */
+    .slider-handle {
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="h-full bg-ios-systemBgLight text-neutral-900 dark:bg-ios-systemBgDark dark:text-neutral-100 flex flex-col font-sans transition-colors duration-300">
+
+  <!-- Header iOS Style -->
+  <header class="safe-top sticky top-0 z-40 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-neutral-200/50 dark:border-neutral-800/50 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-ios-blue to-purple-600 flex items-center justify-center text-white shadow-sm">
+        <i data-lucide="printer" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="text-md font-bold tracking-tight">SELPHY ColorBridge</h1>
+        <p class="text-xxs text-neutral-500 dark:text-neutral-400">Calibration Canon SELPHY CP1500</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+      <!-- Status Indicator -->
+      <span id="engineStatusBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-xxs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400 border border-neutral-200/30 dark:border-neutral-700/30">
+        <span class="w-1.5 h-1.5 rounded-full bg-neutral-400 mr-1.5 animate-pulse"></span>
+        Initialisation...
+      </span>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 overflow-y-auto px-4 py-6 space-y-6 max-w-4xl mx-auto w-full pb-36">
+    
+    <!-- Info Warning for iOS Native Browser -->
+    <div id="ios-info-card" class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-2xl p-4 flex items-start space-x-3">
+      <div class="text-amber-600 dark:text-amber-400 mt-0.5">
+        <i data-lucide="info" class="w-5 h-5"></i>
+      </div>
+      <div class="text-xs space-y-1">
+        <h3 class="font-semibold text-amber-900 dark:text-amber-300">Traitement en mémoire Safari iOS</h3>
+        <p class="text-amber-800/90 dark:text-amber-400/80 leading-relaxed">
+          Pour éviter les crashs de mémoire (OOM) sur iPhone/iPad, les photos sont traitées <strong>une par une</strong>. Une fois converties, partagez-les en bloc pour les réinsérer directement dans votre Pellicule.
+        </p>
+      </div>
+    </div>
+
+    <!-- Section 1 : Custom Target ICC Profile -->
+    <section class="bg-white dark:bg-ios-cardBgDark rounded-2xl p-5 shadow-sm border border-neutral-200/30 dark:border-neutral-800/30 space-y-4">
+      <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800/80 pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="sliders" class="w-5 h-5 text-ios-blue"></i>
+          <h2 class="font-bold text-sm uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Profil ICC Cible (Imprimante)</h2>
+        </div>
+        <span id="profileStatusIndicator" class="inline-flex items-center px-2 py-0.5 rounded-full text-xxs font-medium bg-ios-red/10 text-ios-red dark:bg-ios-red/20 border border-ios-red/20">
+          Inactif
+        </span>
+      </div>
+
+      <!-- ICC Profile Info Panel -->
+      <div id="iccDetailsCard" class="hidden bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl p-4 space-y-3">
+        <div class="flex justify-between items-start">
+          <div class="space-y-1">
+            <h3 id="iccProfileName" class="font-bold text-sm text-neutral-900 dark:text-neutral-100">SELPHY_CP1500_Paper.icc</h3>
+            <p id="iccProfileDesc" class="text-xs text-neutral-500 dark:text-neutral-400">Description du profil non lue</p>
+          </div>
+          <button id="btnDeleteICC" class="text-ios-red hover:bg-ios-red/10 p-1.5 rounded-full transition-colors" title="Supprimer le profil">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xxs text-neutral-500 dark:text-neutral-400 pt-2 border-t border-neutral-200/50 dark:border-neutral-800/50">
+          <div>Espace couleur : <span id="iccColorSpace" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
+          <div>Modèle : <span id="iccDeviceModel" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
+          <div>Fabricant : <span id="iccDeviceMfr" class="font-mono text-neutral-700 dark:text-neutral-300">-</span></div>
+          <div>Persistance : <span class="text-ios-green font-semibold">IndexedDB</span></div>
+        </div>
+      </div>
+
+      <!-- ICC Loader Input Box -->
+      <div id="iccUploadBox" class="border-2 border-dashed border-neutral-200 dark:border-neutral-800 hover:border-ios-blue dark:hover:border-ios-blue rounded-xl p-6 transition-colors duration-200 flex flex-col items-center justify-center text-center cursor-pointer">
+        <input type="file" id="iccInput" accept=".icc,.icm" class="hidden">
+        <i data-lucide="file-up" class="w-8 h-8 text-neutral-400 dark:text-neutral-600 mb-2"></i>
+        <p class="text-xs font-semibold text-ios-blue">Importer un profil personnalisé (.icc / .icm)</p>
+        <p class="text-xxs text-neutral-500 dark:text-neutral-400 mt-1">Nécessaire pour le rendu Canon SELPHY CP1500</p>
+      </div>
+    </section>
+
+    <!-- Section 2 : Photo Batch Upload & Queue -->
+    <section class="bg-white dark:bg-ios-cardBgDark rounded-2xl p-5 shadow-sm border border-neutral-200/30 dark:border-neutral-800/30 space-y-4">
+      <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800/80 pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="images" class="w-5 h-5 text-ios-blue"></i>
+          <h2 class="font-bold text-sm uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Photos à traiter</h2>
+        </div>
+        <span id="queueCounterBadge" class="hidden inline-flex items-center px-2 py-0.5 rounded-full text-xxs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+          0 photos
+        </span>
+      </div>
+
+      <!-- Upload Trigger Button -->
+      <div class="flex items-center justify-center">
+        <label for="imageInput" class="w-full flex flex-col items-center justify-center border-2 border-dashed border-neutral-200 dark:border-neutral-800 hover:border-ios-blue dark:hover:border-ios-blue rounded-xl p-8 cursor-pointer transition-colors text-center">
+          <input type="file" id="imageInput" multiple accept="image/*" class="hidden">
+          <div class="w-12 h-12 rounded-full bg-ios-blue/10 flex items-center justify-center mb-3">
+            <i data-lucide="plus" class="w-6 h-6 text-ios-blue"></i>
+          </div>
+          <p class="text-sm font-bold text-neutral-800 dark:text-neutral-200">Sélectionner des photos</p>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Ouvre la Pellicule iOS. Sélection multiple autorisée.</p>
+        </label>
+      </div>
+
+      <!-- Queue Processing Progress Bar Card (Hidden by default) -->
+      <div id="progressCard" class="hidden bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl p-4 space-y-3">
+        <div class="flex justify-between items-center text-xs font-semibold">
+          <span id="progressTitle" class="text-neutral-800 dark:text-neutral-200">Traitement en cours...</span>
+          <span id="progressPercent" class="text-ios-blue font-mono">0%</span>
+        </div>
+        <div class="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+          <div id="progressBar" class="bg-ios-blue h-full w-0 transition-all duration-300 ease-out"></div>
+        </div>
+        <div class="flex justify-between items-center text-xxs text-neutral-500 dark:text-neutral-400">
+          <span id="progressCounter">Image 0 sur 0</span>
+          <button id="btnCancelProcess" class="text-ios-red font-medium hover:underline">Annuler</button>
+        </div>
+      </div>
+
+      <!-- Image Grid -->
+      <div id="emptyGridState" class="py-12 text-center text-neutral-400 dark:text-neutral-600 flex flex-col items-center">
+        <i data-lucide="image" class="w-12 h-12 mb-2 opacity-50"></i>
+        <p class="text-xs">Aucune image sélectionnée</p>
+      </div>
+
+      <div id="imageGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+        <!-- Grid Items injected dynamically by JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Sticky Bottom Actions Bar -->
+  <footer id="bottomActionBar" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-black/95 border-t border-neutral-200/50 dark:border-neutral-800/50 backdrop-blur-lg px-4 py-4 safe-bottom shadow-lg z-30">
+    <div class="max-w-4xl mx-auto w-full flex flex-col space-y-3">
+      <!-- Status / Action Prompt Info -->
+      <div class="flex justify-between items-center text-xxs text-neutral-500 dark:text-neutral-400">
+        <span id="actionStatusLabel">Prêt pour la conversion</span>
+        <button id="btnClearAll" class="text-ios-red hover:underline flex items-center">
+          <i data-lucide="trash" class="w-3.5 h-3.5 mr-1"></i> Tout vider
+        </button>
+      </div>
+      
+      <!-- Primary and Secondary Actions row -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <!-- Start Processing -->
+        <button id="btnStartProcessing" class="sm:col-span-1 py-3 px-4 rounded-xl text-sm font-bold bg-ios-blue text-white hover:bg-blue-600 active:scale-95 transition-all flex items-center justify-center space-x-2 shadow-sm shadow-blue-500/10">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+          <span>Lancer la conversion</span>
+        </button>
+
+        <!-- Main Export Option (Web Share) -->
+        <button id="btnShareExport" disabled class="sm:col-span-1 py-3 px-4 rounded-xl text-sm font-bold bg-ios-green text-white hover:bg-green-600 active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-45 disabled:pointer-events-none shadow-sm shadow-green-500/10">
+          <i data-lucide="share" class="w-4 h-4"></i>
+          <span>Partager Photos (iOS)</span>
+        </button>
+
+        <!-- Secondary Export Option (ZIP) -->
+        <button id="btnZipExport" disabled class="sm:col-span-1 py-3 px-4 rounded-xl text-sm font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-45 disabled:pointer-events-none border border-neutral-300/30 dark:border-neutral-700/30">
+          <i data-lucide="archive" class="w-4 h-4"></i>
+          <span>Télécharger ZIP</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Split Comparison Modal (Before / After Slider) -->
+  <div id="viewerModal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col justify-between select-none">
+    <!-- Modal Header -->
+    <div class="px-4 py-3 flex items-center justify-between text-white border-b border-neutral-800/80 bg-black/40 backdrop-blur-sm">
+      <div class="flex items-center space-x-2">
+        <i data-lucide="eye" class="w-4 h-4 text-ios-blue"></i>
+        <span class="text-xs font-bold truncate max-w-[200px]" id="viewerImageName">photo.jpg</span>
+      </div>
+      <button id="btnSaveSingleViewer" class="text-xs text-ios-blue hover:text-blue-400 font-bold px-3 py-1 bg-white/10 rounded-full flex items-center space-x-1">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>Enregistrer</span>
+      </button>
+      <button id="btnCloseViewer" class="text-neutral-400 hover:text-white p-1 rounded-full">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+    </div>
+
+    <!-- Split Screen Viewer Area -->
+    <div class="flex-1 relative overflow-hidden flex items-center justify-center px-2 py-4">
+      <div id="viewerContainer" class="relative w-full max-w-lg aspect-auto max-h-[70vh] rounded-lg overflow-hidden shadow-2xl bg-neutral-900 border border-neutral-800">
+        <!-- Before Image (Source sRGB) -->
+        <img id="viewerBeforeImg" class="absolute top-0 left-0 w-full h-full object-contain" src="" alt="Avant">
+        
+        <!-- After Image Container (Target ICC - Clipped) -->
+        <div id="viewerAfterContainer" class="absolute top-0 left-0 w-full h-full overflow-hidden" style="width: 50%;">
+          <img id="viewerAfterImg" class="absolute top-0 left-0 w-full h-full object-contain" src="" alt="Après" style="width: 100%; max-width: none;">
+        </div>
+
+        <!-- Slider Line divider -->
+        <div id="viewerSliderLine" class="absolute top-0 bottom-0 w-[2px] bg-white shadow-xl cursor-ew-resize" style="left: 50%;">
+          <!-- Drag Badge Handle -->
+          <div class="slider-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white text-neutral-800 flex items-center justify-center shadow-lg border border-neutral-300">
+            <i data-lucide="chevrons-left-right" class="w-4 h-4"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Footer Controls -->
+    <div class="px-4 py-5 bg-black/40 backdrop-blur-sm border-t border-neutral-800/80 flex flex-col items-center space-y-2 text-xxs text-neutral-400">
+      <div class="flex items-center space-x-4">
+        <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-neutral-500 mr-1.5"></span>Gauche : Original (sRGB)</span>
+        <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-ios-blue mr-1.5"></span>Droite : SELPHY CP1500 (ICC)</span>
+      </div>
+      <p>Glissez sur l'image pour comparer le rendu avant/après transformation</p>
+    </div>
+  </div>
+
+  <!-- Main JavaScript App Logic -->
+  <script type="module">
+    // Import lcms-wasm from jsDelivr ESM CDN
+    import { 
+      instantiate, 
+      TYPE_RGB_8, 
+      INTENT_PERCEPTUAL, 
+      cmsInfoDescription,
+      cmsInfoManufacturer,
+      cmsInfoModel
+    } from "https://cdn.jsdelivr.net/npm/lcms-wasm/dist/lcms.js";
+
+    // Application state
+    let lcms = null;
+    let targetProfileHandle = null;
+    let isProcessing = false;
+    let cancelProcessingFlag = false;
+
+    // Database structure constants
+    const DB_NAME = "ICCProfileDB";
+    const STORE_NAME = "profiles";
+    const PROFILE_KEY = "current_icc";
+
+    // Selected images stack
+    let imagesQueue = [];
+
+    // DOM References
+    const engineStatusBadge = document.getElementById("engineStatusBadge");
+    const profileStatusIndicator = document.getElementById("profileStatusIndicator");
+    const iccUploadBox = document.getElementById("iccUploadBox");
+    const iccInput = document.getElementById("iccInput");
+    const iccDetailsCard = document.getElementById("iccDetailsCard");
+    const iccProfileName = document.getElementById("iccProfileName");
+    const iccProfileDesc = document.getElementById("iccProfileDesc");
+    const iccColorSpace = document.getElementById("iccColorSpace");
+    const iccDeviceModel = document.getElementById("iccDeviceModel");
+    const iccDeviceMfr = document.getElementById("iccDeviceMfr");
+    const btnDeleteICC = document.getElementById("btnDeleteICC");
+
+    const imageInput = document.getElementById("imageInput");
+    const queueCounterBadge = document.getElementById("queueCounterBadge");
+    const emptyGridState = document.getElementById("emptyGridState");
+    const imageGrid = document.getElementById("imageGrid");
+
+    const progressCard = document.getElementById("progressCard");
+    const progressTitle = document.getElementById("progressTitle");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressBar = document.getElementById("progressBar");
+    const progressCounter = document.getElementById("progressCounter");
+    const btnCancelProcess = document.getElementById("btnCancelProcess");
+
+    const bottomActionBar = document.getElementById("bottomActionBar");
+    const actionStatusLabel = document.getElementById("actionStatusLabel");
+    const btnClearAll = document.getElementById("btnClearAll");
+    const btnStartProcessing = document.getElementById("btnStartProcessing");
+    const btnShareExport = document.getElementById("btnShareExport");
+    const btnZipExport = document.getElementById("btnZipExport");
+
+    // Viewer Modal DOM References
+    const viewerModal = document.getElementById("viewerModal");
+    const btnCloseViewer = document.getElementById("btnCloseViewer");
+    const viewerImageName = document.getElementById("viewerImageName");
+    const viewerContainer = document.getElementById("viewerContainer");
+    const viewerBeforeImg = document.getElementById("viewerBeforeImg");
+    const viewerAfterImg = document.getElementById("viewerAfterImg");
+    const viewerAfterContainer = document.getElementById("viewerAfterContainer");
+    const viewerSliderLine = document.getElementById("viewerSliderLine");
+    const btnSaveSingleViewer = document.getElementById("btnSaveSingleViewer");
+    let activeViewerImage = null;
+
+    // --- IndexedDB Local Storage Helpers ---
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function storeICCProfile(arrayBuffer, fileName) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.put({ data: arrayBuffer, name: fileName }, PROFILE_KEY);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function getICCProfile() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(PROFILE_KEY);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function clearICCProfile() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.delete(PROFILE_KEY);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    // --- Application Initialization ---
+    async function initApp() {
+      // Initialize Lucide Icons
+      lucide.createIcons();
+
+      try {
+        // Step 1: Load LittleCMS WASM
+        engineStatusBadge.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5 animate-pulse"></span>
+          Chargement WASM...
+        `;
+        
+        // Instantiate using standard ES module paths. The wasm resolution is handled natively.
+        lcms = await instantiate();
+        
+        engineStatusBadge.classList.replace("bg-neutral-100", "bg-ios-green/10");
+        engineStatusBadge.classList.replace("text-neutral-600", "text-ios-green");
+        engineStatusBadge.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-ios-green mr-1.5"></span>
+          Moteur CMM Actif
+        `;
+
+        // Step 2: Retrieve saved profile from DB
+        const savedProfile = await getICCProfile();
+        if (savedProfile) {
+          await parseAndApplyICCProfile(savedProfile.data, savedProfile.name);
+        } else {
+          updateProfileUI(null);
+        }
+      } catch (err) {
+        console.error("Initialization error:", err);
+        engineStatusBadge.classList.replace("bg-neutral-100", "bg-ios-red/10");
+        engineStatusBadge.classList.replace("text-neutral-600", "text-ios-red");
+        engineStatusBadge.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-ios-red mr-1.5"></span>
+          Erreur d'initialisation
+        `;
+        alert("Échec du chargement du module de gestion des couleurs: " + err.message);
+      }
+    }
+
+    // Parse ICC Profile metadata and load into LittleCMS memory
+    async function parseAndApplyICCProfile(arrayBuffer, fileName) {
+      if (!lcms) return;
+
+      try {
+        const u8 = new Uint8Array(arrayBuffer);
+        
+        // Clean up previous profile handle if any
+        if (targetProfileHandle) {
+          lcms.cmsCloseProfile(targetProfileHandle);
+          targetProfileHandle = null;
+        }
+
+        // Open profile from RAM
+        targetProfileHandle = lcms.cmsOpenProfileFromMem(u8, u8.length);
+        if (!targetProfileHandle) {
+          throw new Error("Format de profil ICC invalide ou corrompu.");
+        }
+
+        // Extract metadata using lcms-wasm methods
+        const desc = lcms.cmsGetProfileInfoASCII(targetProfileHandle, cmsInfoDescription, "en", "US") || "Description non disponible";
+        const mfr = lcms.cmsGetProfileInfoASCII(targetProfileHandle, cmsInfoManufacturer, "en", "US") || "Canon";
+        const model = lcms.cmsGetProfileInfoASCII(targetProfileHandle, cmsInfoModel, "en", "US") || "SELPHY CP1500";
+        const colorSpace = lcms.cmsGetColorSpaceASCII(targetProfileHandle) || "Inconnu";
+
+        updateProfileUI({
+          name: fileName,
+          desc,
+          mfr,
+          model,
+          colorSpace
+        });
+      } catch (err) {
+        console.error("ICC Parsing error:", err);
+        alert("Erreur lors de l'analyse du profil ICC : " + err.message);
+        updateProfileUI(null);
+      }
+    }
+
+    // Update Profile Status Cards in DOM
+    function updateProfileUI(profileInfo) {
+      if (profileInfo) {
+        profileStatusIndicator.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xxs font-medium bg-ios-green/10 text-ios-green dark:bg-ios-green/20 border border-ios-green/20";
+        profileStatusIndicator.innerText = "Actif";
+        
+        iccProfileName.innerText = profileInfo.name;
+        iccProfileDesc.innerText = profileInfo.desc;
+        iccColorSpace.innerText = profileInfo.colorSpace;
+        iccDeviceModel.innerText = profileInfo.model;
+        iccDeviceMfr.innerText = profileInfo.mfr;
+
+        iccUploadBox.classList.add("hidden");
+        iccDetailsCard.classList.remove("hidden");
+      } else {
+        profileStatusIndicator.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xxs font-medium bg-ios-red/10 text-ios-red dark:bg-ios-red/20 border border-ios-red/20";
+        profileStatusIndicator.innerText = "Inactif";
+        
+        iccUploadBox.classList.remove("hidden");
+        iccDetailsCard.classList.add("hidden");
+        
+        if (targetProfileHandle) {
+          lcms.cmsCloseProfile(targetProfileHandle);
+          targetProfileHandle = null;
+        }
+      }
+      updateBottomBarState();
+    }
+
+    // --- Profile File Input Event Listeners ---
+    iccUploadBox.addEventListener("click", () => iccInput.click());
+    
+    iccInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const buffer = event.target.result;
+        // 1. Store in DB
+        await storeICCProfile(buffer, file.name);
+        // 2. Parse & apply
+        await parseAndApplyICCProfile(buffer, file.name);
+      };
+      reader.readAsArrayBuffer(file);
+      // Reset input value to allow uploading same file again
+      iccInput.value = "";
+    });
+
+    btnDeleteICC.addEventListener("click", async () => {
+      if (confirm("Voulez-vous vraiment décharger et supprimer ce profil ICC ?")) {
+        await clearICCProfile();
+        updateProfileUI(null);
+      }
+    });
+
+    // --- Photo Selection & Queue Setup ---
+    imageInput.addEventListener("change", (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+
+      files.forEach((file) => {
+        // Validate it's an image
+        if (!file.type.startsWith("image/")) {
+          alert(`Le fichier ${file.name} n'est pas une image prise en charge.`);
+          return;
+        }
+
+        const id = "img_" + Math.random().toString(36).substr(2, 9);
+        const previewUrl = URL.createObjectURL(file);
+        
+        imagesQueue.push({
+          id,
+          file,
+          previewUrl,
+          name: file.name,
+          status: "pending", // pending, processing, completed, error
+          resultBlob: null,
+          resultFile: null,
+          resultPreviewUrl: null,
+          width: 0,
+          height: 0
+        });
+      });
+
+      // Reset image input selector
+      imageInput.value = "";
+      
+      renderImageGrid();
+      updateBottomBarState();
+    });
+
+    // Clean image queue and UI items
+    function clearQueue() {
+      imagesQueue.forEach((img) => {
+        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+        if (img.resultPreviewUrl) URL.revokeObjectURL(img.resultPreviewUrl);
+      });
+      imagesQueue = [];
+      renderImageGrid();
+      updateBottomBarState();
+      progressCard.classList.add("hidden");
+    }
+
+    btnClearAll.addEventListener("click", () => {
+      if (confirm("Voulez-vous vider la liste des photos ?")) {
+        clearQueue();
+      }
+    });
+
+    // Render Grid items in DOM
+    function renderImageGrid() {
+      if (imagesQueue.length === 0) {
+        emptyGridState.classList.remove("hidden");
+        imageGrid.classList.add("hidden");
+        queueCounterBadge.classList.add("hidden");
+        return;
+      }
+
+      emptyGridState.classList.add("hidden");
+      imageGrid.classList.remove("hidden");
+      queueCounterBadge.classList.remove("hidden");
+      queueCounterBadge.innerText = `${imagesQueue.length} photo${imagesQueue.length > 1 ? "s" : ""}`;
+
+      imageGrid.innerHTML = "";
+      imagesQueue.forEach((img) => {
+        const item = document.createElement("div");
+        item.className = `group relative aspect-square rounded-xl overflow-hidden border bg-neutral-100 dark:bg-neutral-900 flex flex-col justify-between transition-all duration-200 cursor-pointer ${
+          img.status === "processing" ? "border-ios-orange animate-pulse ring-2 ring-ios-orange/30" :
+          img.status === "completed" ? "border-ios-green/50 hover:ring-2 hover:ring-ios-green/20" :
+          img.status === "error" ? "border-ios-red/50" : "border-neutral-200 dark:border-neutral-800"
+        }`;
+        
+        // Item Click to trigger Before/After slider viewer
+        item.addEventListener("click", () => {
+          if (img.status === "completed") {
+            openBeforeAfterViewer(img);
+          }
+        });
+
+        // HTML Layout for each photo cell
+        item.innerHTML = `
+          <!-- Image Preview -->
+          <img src="${img.previewUrl}" class="absolute inset-0 w-full h-full object-cover select-none">
+          
+          <!-- Gradient overlay for reading texts -->
+          <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 z-10"></div>
+          
+          <!-- Top indicators -->
+          <div class="relative z-20 p-2 flex justify-between items-start">
+            <!-- Status Badge -->
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase select-none ${
+              img.status === "processing" ? "bg-ios-orange text-white" :
+              img.status === "completed" ? "bg-ios-green text-white" :
+              img.status === "error" ? "bg-ios-red text-white" :
+              "bg-black/50 text-white"
+            }">
+              ${
+                img.status === "processing" ? "En cours" :
+                img.status === "completed" ? "Prêt" :
+                img.status === "error" ? "Erreur" :
+                "En attente"
+              }
+            </span>
+
+            <!-- Delete specific button (hidden during processing) -->
+            ${!isProcessing ? `
+              <button onclick="event.stopPropagation(); window.removeSingleImage('${img.id}')" class="bg-black/50 hover:bg-ios-red p-1 rounded-md text-white backdrop-blur-sm transition-colors">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            ` : ""}
+          </div>
+
+          <!-- Bottom description -->
+          <div class="relative z-20 p-2 text-white flex flex-col select-none">
+            <span class="text-[10px] font-medium truncate">${img.name}</span>
+            <span class="text-[8px] text-white/75 font-mono leading-none mt-0.5">${
+              img.width && img.height ? `${img.width}x${img.height}` : formatFileSize(img.file.size)
+            }</span>
+          </div>
+
+          <!-- Quick view action indicator for completed images -->
+          ${img.status === "completed" ? `
+            <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity z-25">
+              <span class="px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full text-white text-xxs font-bold flex items-center space-x-1">
+                <i data-lucide="eye" class="w-3 h-3 text-ios-blue"></i>
+                <span>Comparer</span>
+              </span>
+            </div>
+          ` : ""}
+        `;
+        imageGrid.appendChild(item);
+      });
+
+      // Re-trigger icon updates
+      lucide.createIcons();
+    }
+
+    // Expose image deletion helper to window context
+    window.removeSingleImage = (id) => {
+      const idx = imagesQueue.findIndex(img => img.id === id);
+      if (idx !== -1) {
+        const img = imagesQueue[idx];
+        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+        if (img.resultPreviewUrl) URL.revokeObjectURL(img.resultPreviewUrl);
+        imagesQueue.splice(idx, 1);
+        renderImageGrid();
+        updateBottomBarState();
+      }
+    };
+
+    // UI helpers
+    function formatFileSize(bytes) {
+      if (bytes === 0) return "0 octets";
+      const k = 1024;
+      const sizes = ["B", "Ko", "Mo"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+    }
+
+    function updateBottomBarState() {
+      const hasImages = imagesQueue.length > 0;
+      const profileLoaded = targetProfileHandle !== null;
+      const allCompleted = hasImages && imagesQueue.every(img => img.status === "completed");
+
+      // Show bottom action bar if there are files in queue
+      if (hasImages) {
+        bottomActionBar.classList.remove("hidden");
+      } else {
+        bottomActionBar.classList.add("hidden");
+      }
+
+      // Action control labels
+      if (!profileLoaded) {
+        actionStatusLabel.innerText = "Attention : Aucun profil ICC sélectionné.";
+        btnStartProcessing.disabled = true;
+        btnStartProcessing.classList.add("opacity-50", "pointer-events-none");
+      } else if (allCompleted) {
+        actionStatusLabel.innerText = "Tous les fichiers sont convertis !";
+        btnStartProcessing.disabled = true;
+        btnStartProcessing.classList.add("opacity-50", "pointer-events-none");
+      } else {
+        actionStatusLabel.innerText = `${imagesQueue.filter(img => img.status !== 'completed').length} image(s) en attente de conversion.`;
+        btnStartProcessing.disabled = isProcessing;
+        if (isProcessing) {
+          btnStartProcessing.classList.add("opacity-50", "pointer-events-none");
+        } else {
+          btnStartProcessing.classList.remove("opacity-50", "pointer-events-none");
+        }
+      }
+
+      // Exports control
+      if (allCompleted && !isProcessing) {
+        btnShareExport.disabled = false;
+        btnZipExport.disabled = false;
+      } else {
+        btnShareExport.disabled = true;
+        btnZipExport.disabled = true;
+      }
+    }
+
+    // --- Sequential Queue Processing & Memory Control ---
+    async function startBatchProcessing() {
+      if (!lcms || !targetProfileHandle || isProcessing) return;
+
+      isProcessing = true;
+      cancelProcessingFlag = false;
+      updateBottomBarState();
+      
+      // Update items layout (disable delete buttons)
+      renderImageGrid();
+
+      // Show progress details card
+      progressCard.classList.remove("hidden");
+      progressBar.style.width = "0%";
+      progressPercent.innerText = "0%";
+      progressTitle.innerText = "Démarrage du traitement par lot...";
+      
+      // Initialize LittleCMS target mapping once for the entire batch
+      let srcProfileHandle = null;
+      let colorTransformHandle = null;
+
+      try {
+        srcProfileHandle = lcms.cmsCreate_sRGBProfile();
+        
+        // Perceptual Intent = 0
+        colorTransformHandle = lcms.cmsCreateTransform(
+          srcProfileHandle,
+          TYPE_RGB_8,
+          targetProfileHandle,
+          TYPE_RGB_8,
+          INTENT_PERCEPTUAL,
+          0
+        );
+
+        if (!colorTransformHandle) {
+          throw new Error("Impossible d'instancier la conversion colorimétrique.");
+        }
+
+        const total = imagesQueue.length;
+        let processedCount = 0;
+
+        for (let i = 0; i < total; i++) {
+          // If cancel button is clicked, exit loop
+          if (cancelProcessingFlag) {
+            console.log("Batch cancelled by user.");
+            break;
+          }
+
+          const imgData = imagesQueue[i];
+          if (imgData.status === "completed") {
+            processedCount++;
+            continue; // Skip already converted ones
+          }
+
+          imgData.status = "processing";
+          renderImageGrid();
+          updateProgressUI(i, total, `Conversion de ${imgData.name}...`);
+
+          try {
+            // Transform color profile on the image
+            const result = await processSingleImage(imgData, colorTransformHandle);
+            
+            imgData.status = "completed";
+            imgData.resultBlob = result.blob;
+            imgData.resultFile = result.file;
+            imgData.resultPreviewUrl = URL.createObjectURL(result.blob);
+            imgData.width = result.width;
+            imgData.height = result.height;
+          } catch (err) {
+            console.error(`Error processing image ${imgData.name}:`, err);
+            imgData.status = "error";
+          }
+
+          processedCount++;
+          const percent = Math.round((processedCount / total) * 100);
+          progressBar.style.width = `${percent}%`;
+          progressPercent.innerText = `${percent}%`;
+          renderImageGrid();
+        }
+
+        updateProgressUI(total, total, cancelProcessingFlag ? "Traitement annulé." : "Traitement colorimétrique terminé !");
+
+      } catch (err) {
+        console.error("Batch error:", err);
+        alert("Erreur critique durant le traitement : " + err.message);
+      } finally {
+        // Clean up LittleCMS conversion resources to avoid memory leaks
+        if (colorTransformHandle) lcms.cmsDeleteTransform(colorTransformHandle);
+        if (srcProfileHandle) lcms.cmsCloseProfile(srcProfileHandle);
+
+        isProcessing = false;
+        updateBottomBarState();
+        renderImageGrid(); // Re-enable grid buttons
+      }
+    }
+
+    // Process a single image inside Canvas and transform its pixels via LittleCMS
+    function processSingleImage(imgData, colorTransformHandle) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const width = img.naturalWidth;
+            const height = img.naturalHeight;
+            const numPixels = width * height;
+
+            // 1. Instanciate canvas
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            
+            // Draw image on temporary canvas
+            ctx.drawImage(img, 0, 0);
+
+            // 2. Extract ImageData
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data; // Uint8ClampedArray: R, G, B, A
+
+            // 3. Extract RGB pixels for LittleCMS (Uint8Array)
+            const rgbInput = new Uint8Array(numPixels * 3);
+            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+              rgbInput[j] = data[i];
+              rgbInput[j + 1] = data[i + 1];
+              rgbInput[j + 2] = data[i + 2];
+            }
+
+            // 4. Transform colors via LittleCMS (RGB -> Custom ICC)
+            const rgbOutput = lcms.cmsDoTransform(colorTransformHandle, rgbInput, numPixels);
+
+            // 5. Inject back in ImageData (A remains 255)
+            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+              data[i] = rgbOutput[j];
+              data[i + 1] = rgbOutput[j + 1];
+              data[i + 2] = rgbOutput[j + 2];
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            // 6. Export canvas as High Quality JPEG Blob (Quality: 1.0)
+            canvas.toBlob((blob) => {
+              // 7. Strictly clear canvas memory right away to prevent iOS OOM crash
+              canvas.width = 0;
+              canvas.height = 0;
+
+              if (blob) {
+                // Wrap in a File object for the Web Share API
+                const outFileName = imgData.name.replace(/\.[^/.]+$/, "") + "_calibrated.jpg";
+                const file = new File([blob], outFileName, { type: "image/jpeg" });
+                resolve({ blob, file, width, height });
+              } else {
+                reject(new Error("Échec de l'exportation du Canvas en Blob."));
+              }
+            }, "image/jpeg", 1.0);
+
+          } catch (err) {
+            reject(err);
+          }
+        };
+
+        img.onerror = (e) => reject(new Error("Impossible de charger l'image source en mémoire."));
+        img.src = imgData.previewUrl;
+      });
+    }
+
+    // Update progress state labels
+    function updateProgressUI(current, total, msg) {
+      progressTitle.innerText = msg;
+      progressCounter.innerText = `Image ${Math.min(current + 1, total)} sur ${total}`;
+    }
+
+    // Cancel Processing event
+    btnCancelProcess.addEventListener("click", () => {
+      if (isProcessing) {
+        cancelProcessingFlag = true;
+        btnCancelProcess.innerText = "Annulation...";
+      }
+    });
+
+    btnStartProcessing.addEventListener("click", () => {
+      startBatchProcessing();
+    });
+
+    // --- Export Options (Web Share & ZIP) ---
+    
+    // Main Option: Web Share API (Multiple files)
+    btnShareExport.addEventListener("click", async () => {
+      const completedImages = imagesQueue.filter(img => img.status === "completed" && img.resultFile !== null);
+      if (completedImages.length === 0) return;
+
+      const filesArray = completedImages.map(img => img.resultFile);
+
+      if (navigator.canShare && navigator.canShare({ files: filesArray })) {
+        try {
+          await navigator.share({
+            files: filesArray,
+            title: "Photos calibrées SELPHY CP1500",
+            text: "Photos converties via profil ICC personnalisé."
+          });
+        } catch (err) {
+          // If aborted by user, it throws an exception (which we ignore)
+          if (err.name !== "AbortError") {
+            console.error("Web Share failed:", err);
+            alert("Erreur de partage : " + err.message);
+          }
+        }
+      } else {
+        alert("Le partage de fichiers multiples n'est pas pris en charge par ce navigateur. Veuillez utiliser l'export ZIP ci-dessous.");
+      }
+    });
+
+    // Secondary Option: Compilation ZIP with JSZip
+    btnZipExport.addEventListener("click", async () => {
+      const completedImages = imagesQueue.filter(img => img.status === "completed" && img.resultFile !== null);
+      if (completedImages.length === 0) return;
+
+      btnZipExport.disabled = true;
+      btnZipExport.innerHTML = `<span class="w-4 h-4 border-2 border-neutral-800 border-t-transparent rounded-full animate-spin"></span><span>Compression...</span>`;
+
+      try {
+        const zip = new JSZip();
+        
+        completedImages.forEach((img) => {
+          zip.file(img.resultFile.name, img.resultBlob);
+        });
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const downloadUrl = URL.createObjectURL(zipBlob);
+        
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = "SELPHY_Photos_Calibrees.zip";
+        document.body.appendChild(a);
+        a.click();
+        
+        // Clean up
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      } catch (err) {
+        console.error("ZIP creation failed:", err);
+        alert("Échec de la génération du pack ZIP : " + err.message);
+      } finally {
+        btnZipExport.innerHTML = `<i data-lucide="archive" class="w-4 h-4"></i><span>Télécharger ZIP</span>`;
+        lucide.createIcons();
+        updateBottomBarState();
+      }
+    });
+
+    // --- Before/After Split Viewer Logic ---
+    function openBeforeAfterViewer(imgData) {
+      activeViewerImage = imgData;
+      viewerImageName.innerText = imgData.name;
+      
+      // Load source image
+      viewerBeforeImg.src = imgData.previewUrl;
+      // Load calibrated image
+      viewerAfterImg.src = imgData.resultPreviewUrl;
+
+      // Set initial slider split ratio to 50%
+      updateViewerSplit(50);
+
+      // Open Modal
+      viewerModal.classList.remove("hidden");
+      document.body.classList.add("overflow-hidden"); // Disable main scrolling
+    }
+
+    function closeBeforeAfterViewer() {
+      viewerModal.classList.add("hidden");
+      document.body.classList.remove("overflow-hidden");
+      viewerBeforeImg.src = "";
+      viewerAfterImg.src = "";
+      activeViewerImage = null;
+    }
+
+    // Set slider percentage value
+    function updateViewerSplit(percent) {
+      percent = Math.max(0, Math.min(100, percent));
+      viewerAfterContainer.style.width = `${percent}%`;
+      viewerSliderLine.style.left = `${percent}%`;
+    }
+
+    // Mouse & Touch events on Viewer Container
+    function handleViewerDrag(e) {
+      const rect = viewerContainer.getBoundingClientRect();
+      let clientX = 0;
+      
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+      } else {
+        clientX = e.clientX;
+      }
+
+      const relativeX = clientX - rect.left;
+      const percent = (relativeX / rect.width) * 100;
+      updateViewerSplit(percent);
+    }
+
+    let isDraggingViewer = false;
+
+    function startDragging() {
+      isDraggingViewer = true;
+    }
+
+    function stopDragging() {
+      isDraggingViewer = false;
+    }
+
+    // Bind event listeners to viewer controls
+    viewerSliderLine.addEventListener("mousedown", startDragging);
+    viewerSliderLine.addEventListener("touchstart", startDragging, { passive: true });
+    
+    window.addEventListener("mouseup", stopDragging);
+    window.addEventListener("touchend", stopDragging);
+    
+    viewerContainer.addEventListener("mousemove", (e) => {
+      if (isDraggingViewer) handleViewerDrag(e);
+    });
+    viewerContainer.addEventListener("touchmove", (e) => {
+      if (isDraggingViewer) handleViewerDrag(e);
+    }, { passive: true });
+
+    // Allow clicking the container to jump the slider
+    viewerContainer.addEventListener("click", (e) => {
+      // Avoid jump click when dragging releases
+      if (!isDraggingViewer) handleViewerDrag(e);
+    });
+
+    btnCloseViewer.addEventListener("click", closeBeforeAfterViewer);
+
+    // Save single calibrated photo from Viewer
+    btnSaveSingleViewer.addEventListener("click", () => {
+      if (!activeViewerImage || !activeViewerImage.resultPreviewUrl) return;
+      
+      // Download anchor trick
+      const a = document.createElement("a");
+      a.href = activeViewerImage.resultPreviewUrl;
+      a.download = activeViewerImage.resultFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+
+    // Start App init on DOM ready
+    window.addEventListener("DOMContentLoaded", initApp);
+
+  </script>
+</body>
+</html>
