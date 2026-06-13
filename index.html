@@ -125,19 +125,6 @@
         </button>
       </div>
     </div>
-    
-    <!-- Info Warning for iOS Native Browser -->
-    <div id="ios-info-card" class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-2xl p-4 flex items-start space-x-3">
-      <div class="text-amber-600 dark:text-amber-400 mt-0.5">
-        <i data-lucide="info" class="w-5 h-5"></i>
-      </div>
-      <div class="text-xs space-y-1">
-        <h3 class="font-semibold text-amber-900 dark:text-amber-300">Traitement en mémoire Safari iOS</h3>
-        <p class="text-amber-800/90 dark:text-amber-400/80 leading-relaxed">
-          Pour éviter les crashs de mémoire (OOM) sur iPhone/iPad, les photos sont traitées <strong>une par une</strong>. Une fois converties, partagez-les en bloc pour les réinsérer directement dans votre Galerie.
-        </p>
-      </div>
-    </div>
 
     <!-- Section 1 : Photo Batch Upload & Queue (Now at the top) -->
     <section class="bg-white dark:bg-ios-cardBgDark rounded-2xl p-5 shadow-sm border border-neutral-200/30 dark:border-neutral-800/30 space-y-4">
@@ -669,6 +656,7 @@
           previewUrl,
           name: imageFile.name,
           status: "pending", // pending, processing, completed, error
+          isExported: false,
           resultBlob: null,
           resultFile: null,
           resultPreviewUrl: null,
@@ -746,13 +734,13 @@
             <!-- Status Badge -->
             <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase select-none ${
               img.status === "processing" ? "bg-ios-orange text-white" :
-              img.status === "completed" ? "bg-ios-green text-white" :
+              img.status === "completed" ? (img.isExported ? "bg-ios-blue text-white" : "bg-ios-green text-white") :
               img.status === "error" ? "bg-ios-red text-white" :
               "bg-black/50 text-white"
             }">
               ${
                 img.status === "processing" ? "En cours" :
-                img.status === "completed" ? "Prêt" :
+                img.status === "completed" ? (img.isExported ? "Enregistré" : "Prêt") :
                 img.status === "error" ? "Erreur" :
                 "En attente"
               }
@@ -1052,6 +1040,9 @@
             title: "Photos calibrées SELPHY CP1500",
             text: "Photos converties via profil ICC personnalisé."
           });
+          // Mark all shared files as exported in UI to prevent duplicates
+          completedImages.forEach(img => img.isExported = true);
+          renderImageGrid();
         } catch (err) {
           // If aborted by user, it throws an exception (which we ignore)
           if (err.name !== "AbortError") {
@@ -1091,6 +1082,10 @@
         // Clean up
         document.body.removeChild(a);
         URL.revokeObjectURL(downloadUrl);
+
+        // Mark all ZIP files as exported in UI
+        completedImages.forEach(img => img.isExported = true);
+        renderImageGrid();
       } catch (err) {
         console.error("ZIP creation failed:", err);
         alert("Échec de la génération du pack ZIP : " + err.message);
@@ -1193,6 +1188,10 @@
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+
+      // Mark single photo as exported in UI
+      activeViewerImage.isExported = true;
+      renderImageGrid();
     });
 
     // --- PWA Custom Install Prompt Banner Logic ---
@@ -1211,24 +1210,48 @@
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     // Helper to check if user is on mobile
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    // Browser checks
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isChrome = /CriOS|Chrome/i.test(navigator.userAgent);
+    const isFirefox = /FxiOS|Firefox/i.test(navigator.userAgent);
 
     function showInstallPrompt() {
       // Don't show if standalone or already dismissed
       if (isStandalone || isDismissed) return;
       
       if (isIOS) {
-        // iOS Instructions
-        pwaInstallDesc.innerHTML = `Pour installer l'application sur votre iPhone, appuyez sur le bouton de partage <span class="inline-flex items-center mx-1 px-1 bg-neutral-200 dark:bg-neutral-800 rounded text-neutral-800 dark:text-neutral-200"><i data-lucide="share" class="w-3.5 h-3.5"></i></span> dans Safari, puis sélectionnez <strong>Sur l'écran d'accueil</strong>.`;
+        if (isSafari) {
+          // iOS Safari
+          pwaInstallDesc.innerHTML = `Pour installer l'application sur votre iPhone, appuyez sur le bouton de partage <span class="inline-flex items-center mx-1 px-1 bg-neutral-200 dark:bg-neutral-800 rounded text-neutral-800 dark:text-neutral-200"><i data-lucide="share" class="w-3.5 h-3.5"></i></span> dans Safari, puis sélectionnez <strong>Sur l'écran d'accueil</strong>.`;
+        } else if (isChrome) {
+          // iOS Chrome
+          pwaInstallDesc.innerHTML = `Pour installer l'application sur votre iPhone, appuyez sur l'icône de partage <span class="inline-flex items-center mx-1 px-1 bg-neutral-200 dark:bg-neutral-800 rounded text-neutral-800 dark:text-neutral-200"><i data-lucide="share" class="w-3.5 h-3.5"></i></span> (ou les trois points <i class="w-3 h-3 inline" data-lucide="more-horizontal"></i>), faites défiler et sélectionnez <strong>Ajouter à l'écran d'accueil</strong>.`;
+        } else if (isFirefox) {
+          // iOS Firefox
+          pwaInstallDesc.innerHTML = `Pour installer sur iPhone, ouvrez le menu de Firefox en bas à droite (trois lignes <i class="w-3 h-3 inline" data-lucide="menu"></i>), sélectionnez <strong>Partager</strong> puis <strong>Sur l'écran d'accueil</strong>.`;
+        } else {
+          // General iOS fallback
+          pwaInstallDesc.innerHTML = `Pour installer l'application sur votre iPhone, ouvrez le menu de partage de votre navigateur, puis sélectionnez <strong>Sur l'écran d'accueil</strong>.`;
+        }
         pwaInstallBanner.classList.remove("hidden");
-        lucide.createIcons(); // Refresh icons to render the inline share icon
+        lucide.createIcons(); // Refresh icons
       } else if (deferredPrompt) {
         // Android / Chrome / Desktop PWA supporting install prompt
+        pwaInstallDesc.innerText = "Installez cette application pour y accéder instantanément depuis vos applications et l'utiliser hors-ligne.";
         btnPwaInstall.classList.remove("hidden");
         pwaInstallBanner.classList.remove("hidden");
       } else if (isMobile) {
-        // Generic mobile fallback
-        pwaInstallDesc.innerText = "Ajoutez cette application à l'écran d'accueil de votre smartphone depuis le menu de votre navigateur pour l'utiliser hors-ligne.";
+        // Generic mobile fallback (e.g. Android Firefox, Samsung Internet etc.)
+        pwaInstallDesc.innerText = "Ouvrez le menu de votre navigateur (trois points) et sélectionnez \"Installer l'application\" ou \"Ajouter à l'écran d'accueil\" pour l'utiliser hors-ligne.";
         pwaInstallBanner.classList.remove("hidden");
+      } else {
+        // Desktop browsers (without native beforeinstallprompt supported/fired yet)
+        if (isSafari) {
+          // Safari macOS Sonoma+
+          pwaInstallDesc.innerHTML = `Pour installer sur Mac, cliquez sur l'icône de partage <span class="inline-flex items-center mx-1 px-1 bg-neutral-200 dark:bg-neutral-800 rounded text-neutral-800 dark:text-neutral-200"><i data-lucide="share" class="w-3.5 h-3.5"></i></span> dans Safari, puis sélectionnez <strong>Ajouter au Dock</strong>.`;
+          pwaInstallBanner.classList.remove("hidden");
+          lucide.createIcons();
+        }
       }
     }
 
