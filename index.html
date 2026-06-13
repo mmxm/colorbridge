@@ -5,8 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>SELPHY ColorBridge - Calibration CP1500</title>
   
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Manifeste PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <!-- Thème de couleur pour la barre d'adresse mobile -->
+  <meta name="theme-color" content="#007aff">
+  <!-- iOS Meta tags pour PWA standalone -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ColorBridge">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+
+  <!-- Tailwind CSS Local -->
+  <script src="./assets/tailwind.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'media',
@@ -33,14 +43,14 @@
     }
   </script>
 
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Lucide Icons Local -->
+  <script src="./assets/lucide.min.js"></script>
 
-  <!-- JSZip CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- JSZip Local -->
+  <script src="./assets/jszip.min.js"></script>
 
-  <!-- heic2any CDN (HEIC/HEIF browser support for Firefox/Chrome) -->
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <!-- heic2any Local -->
+  <script src="./assets/heic2any.min.js"></script>
 
   <!-- Custom styles for iOS native scroll and glassmorphism -->
   <style>
@@ -91,6 +101,30 @@
 
   <!-- Main Content Area -->
   <main class="flex-1 overflow-y-auto px-4 py-6 space-y-6 max-w-4xl mx-auto w-full pb-36">
+
+    <!-- PWA Install Banner -->
+    <div id="pwa-install-banner" class="hidden bg-white/90 dark:bg-ios-cardBgDark/90 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl p-4 shadow-md flex items-start justify-between space-x-3 transition-all duration-300">
+      <div class="flex items-start space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-ios-blue to-purple-600 flex items-center justify-center text-white shadow-sm shrink-0">
+          <i data-lucide="download-cloud" class="w-5 h-5"></i>
+        </div>
+        <div class="text-xs space-y-1">
+          <h3 class="font-bold text-neutral-900 dark:text-neutral-100">Ajouter à l'écran d'accueil</h3>
+          <p id="pwa-install-desc" class="text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            Installez cette application sur votre smartphone pour l'utiliser hors-ligne à tout moment.
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-col items-end space-y-2 shrink-0">
+        <button id="btn-close-install" class="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+        <!-- For Chrome / Android -->
+        <button id="btn-pwa-install" class="hidden px-3 py-1.5 rounded-lg bg-ios-blue text-white text-[10px] font-bold hover:bg-blue-600 active:scale-95 transition-all shadow-sm">
+          Installer
+        </button>
+      </div>
+    </div>
     
     <!-- Info Warning for iOS Native Browser -->
     <div id="ios-info-card" class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-2xl p-4 flex items-start space-x-3">
@@ -286,7 +320,7 @@
 
   <!-- Main JavaScript App Logic -->
   <script type="module">
-    // Import lcms-wasm from jsDelivr ESM CDN
+    // Import lcms-wasm from local assets
     import { 
       instantiate, 
       TYPE_RGB_8, 
@@ -294,7 +328,7 @@
       cmsInfoDescription,
       cmsInfoManufacturer,
       cmsInfoModel
-    } from "https://cdn.jsdelivr.net/npm/lcms-wasm/dist/lcms.js";
+    } from "./assets/lcms.js";
 
     // Application state
     let lcms = null;
@@ -1161,9 +1195,80 @@
       document.body.removeChild(a);
     });
 
-    // Start App init on DOM ready
-    window.addEventListener("DOMContentLoaded", initApp);
+    // --- PWA Custom Install Prompt Banner Logic ---
+    const pwaInstallBanner = document.getElementById("pwa-install-banner");
+    const pwaInstallDesc = document.getElementById("pwa-install-desc");
+    const btnPwaInstall = document.getElementById("btn-pwa-install");
+    const btnCloseInstall = document.getElementById("btn-close-install");
+    
+    let deferredPrompt = null;
 
+    // Detect if already installed (standalone mode)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const isDismissed = localStorage.getItem('pwa_install_dismissed') === 'true';
+
+    // Helper to check if user is on iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    // Helper to check if user is on mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    function showInstallPrompt() {
+      // Don't show if standalone or already dismissed
+      if (isStandalone || isDismissed) return;
+      
+      if (isIOS) {
+        // iOS Instructions
+        pwaInstallDesc.innerHTML = `Pour installer l'application sur votre iPhone, appuyez sur le bouton de partage <span class="inline-flex items-center mx-1 px-1 bg-neutral-200 dark:bg-neutral-800 rounded text-neutral-800 dark:text-neutral-200"><i data-lucide="share" class="w-3.5 h-3.5"></i></span> dans Safari, puis sélectionnez <strong>Sur l'écran d'accueil</strong>.`;
+        pwaInstallBanner.classList.remove("hidden");
+        lucide.createIcons(); // Refresh icons to render the inline share icon
+      } else if (deferredPrompt) {
+        // Android / Chrome / Desktop PWA supporting install prompt
+        btnPwaInstall.classList.remove("hidden");
+        pwaInstallBanner.classList.remove("hidden");
+      } else if (isMobile) {
+        // Generic mobile fallback
+        pwaInstallDesc.innerText = "Ajoutez cette application à l'écran d'accueil de votre smartphone depuis le menu de votre navigateur pour l'utiliser hors-ligne.";
+        pwaInstallBanner.classList.remove("hidden");
+      }
+    }
+
+    // Intercept standard beforeinstallprompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      showInstallPrompt();
+    });
+
+    btnPwaInstall.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`PWA install prompt outcome: ${outcome}`);
+      deferredPrompt = null;
+      pwaInstallBanner.classList.add("hidden");
+    });
+
+    btnCloseInstall.addEventListener('click', () => {
+      pwaInstallBanner.classList.add("hidden");
+      // Prevent showing again
+      localStorage.setItem('pwa_install_dismissed', 'true');
+    });
+
+    // Start App init on DOM ready
+    window.addEventListener("DOMContentLoaded", () => {
+      initApp();
+      // Wait a moment before evaluating installation banner to let browser fire events
+      setTimeout(showInstallPrompt, 1500);
+    });
+
+    // Register Service Worker for PWA offline support
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('[PWA] Service Worker enregistré avec succès :', reg.scope))
+          .catch((err) => console.error('[PWA] Échec de l\'enregistrement du Service Worker :', err));
+      });
+    }
   </script>
 </body>
 </html>
