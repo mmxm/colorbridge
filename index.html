@@ -1284,12 +1284,37 @@
       setTimeout(showInstallPrompt, 1500);
     });
 
-    // Register Service Worker for PWA offline support
+    // Register Service Worker for PWA offline support and handle automatic updates
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-          .then((reg) => console.log('[PWA] Service Worker enregistré avec succès :', reg.scope))
+          .then((reg) => {
+            console.log('[PWA] Service Worker enregistré avec succès :', reg.scope);
+            
+            // Check for updates every 1 hour (3600000 ms)
+            setInterval(() => {
+              reg.update();
+              console.log('[PWA] Vérification des mises à jour du Service Worker...');
+            }, 3600000);
+            
+            // Check for updates when the app is focused / returned from background
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') {
+                reg.update();
+                console.log('[PWA] Page visible, vérification des mises à jour...');
+              }
+            });
+          })
           .catch((err) => console.error('[PWA] Échec de l\'enregistrement du Service Worker :', err));
+      });
+
+      // Handle automatic page reload when a new service worker takes control
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        console.log('[PWA] Nouveau Service Worker activé, rechargement de la page...');
+        window.location.reload();
       });
     }
   </script>

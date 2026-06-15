@@ -1,4 +1,4 @@
-const CACHE_NAME = 'colorbridge-v1';
+const CACHE_NAME = 'colorbridge-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -15,13 +15,15 @@ const ASSETS_TO_CACHE = [
   './assets/icon-512.png'
 ];
 
-// Install Event: Pre-cache all static assets
+// Install Event: Pre-cache all static assets with network-reload to bypass browser HTTP cache
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('[Service Worker] Pre-caching static assets');
-        return cache.addAll(ASSETS_TO_CACHE);
+        console.log('[Service Worker] Pre-caching static assets with cache-busting');
+        // Map each asset to a Request object with cache: 'reload' to force network fetching
+        const requests = ASSETS_TO_CACHE.map(url => new Request(url, { cache: 'reload' }));
+        return cache.addAll(requests);
       })
       .then(() => self.skipWaiting())
       .catch((err) => {
